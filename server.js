@@ -10,9 +10,11 @@ var passport = require('passport');
 var authController = require('./auth');
 var authJwtController = require('./auth_jwt');
 var jwt = require('jsonwebtoken');
+var ExtractJwt = require('passport-jwt').ExtractJwt;
 var cors = require('cors');
 var User = require('./Users');
 var Movie = require('./Movies');
+var Reviews = require('./Reviews');
 
 var app = express();
 app.use(cors());
@@ -133,13 +135,27 @@ router.route('/movies')
     })
 router.route('/movies/:movieparameter')
     .get((req, res) => {
-        Movie.find({title: req.params.movieparameter}).exec(function(err, movie) {  
+        title = req.params.movieparameter;
+        Movie.find({title: title}).exec(function(err, movie) {  
             if (err)
                 console.log(err);
             if (movie.length == 1)
             {
-                title = movie[0].title;
-                res.json ({success: true, movie: movie});
+                if (req.query.review == "true")
+                {
+                    Reviews.find({movieId: movie[0]._id.toString()}).exec(function(err, reviews) {
+                        if (err)
+                        {
+                            console.log(err);
+                            return res.json(err);
+                        }
+                        res.json({success: true, movie: movie, reviews: reviews});
+                    })                    
+                }
+                else
+                {
+                    res.json ({success: true, movie: movie});
+                }
             }
             else 
             {
@@ -172,6 +188,42 @@ router.route('/movies/:movieparameter')
     })
     .all((req, res) => {
         res.status(405).send({message: 'HTTP method not supported.' });
+    })
+router.route('/reviews')
+    .get((req, res) => {
+        // Return all reviews
+        Reviews.find({}).exec(function(err, reviews) {
+            if (err) {
+                console.log(err);
+            }
+
+            res.json ({success: true, reviews: reviews})
+        })
+    })
+    .post(authJwtController.isAuthenticated, (req, res) => {
+         // Save a single review
+         var newReview = new Reviews();
+         //Find the movieId from title
+         Movie.find({title: req.body.title}).exec(function(err, movie) {
+            if (movie.length != 0)
+            {
+                newReview.movieId = movie[0]._id.toString()
+                newReview.username = req.body.username;
+                newReview.review = req.body.review;
+                newReview.rating = req.body.rating;
+                
+                newReview.save(function(err){
+                    if (err) {
+                        console.log(err.message);
+                        return res.json(err);
+                    }
+
+                    res.json({success: true, message: 'Review created!'});
+                })
+            }
+            else
+                res.json({success: false});
+         });
     })
 
 app.use('/', router);
